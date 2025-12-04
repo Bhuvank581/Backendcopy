@@ -28,16 +28,59 @@ backend/
 
 ## Getting Started
 
-1. Install dependencies:
+1. Create and activate virtual environment:
+
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate it (Windows)
+.\venv\Scripts\Activate.ps1
+
+# Activate it (Mac/Linux)
+source venv/bin/activate
+```
+
+2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the server:
+3. Run the server:
 
 ```bash
 uvicorn main:app --reload
 ```
 
 API available at `http://localhost:8000/api/v1`
+
+## Docker Setup
+
+### Using Docker Compose (Recommended)
+
+```bash
+# Build and start the container
+docker-compose up --build
+
+# Run in detached mode
+docker-compose up -d
+
+# Stop the container
+docker-compose down
+```
+
+### Using Docker directly
+
+```bash
+# Build the image
+docker build -t fastapi-backend .
+
+# Run the container
+docker run -p 8000:8000 fastapi-backend
+
+# Run with environment variables
+docker run -p 8000:8000 -e DEBUG=True fastapi-backend
+```
+
+API will be available at `http://localhost:8000/api/v1`
