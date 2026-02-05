@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from infrastructure.config import settings
 from infrastructure.container import container
-from infrastructure.api.routes import health
+from infrastructure.api.routes import health, audio
 from infrastructure.persistence.in_memory_repository import InMemoryRepository
 
 
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     
     # Register routes
     app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
+    app.include_router(audio.router, prefix=settings.api_prefix, tags=["audio"])
     
     return app
 
