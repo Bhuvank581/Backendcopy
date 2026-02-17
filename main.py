@@ -10,7 +10,7 @@ from infrastructure.container import container
 from infrastructure.api.routes import health, audio
 from infrastructure.persistence.in_memory_repository import InMemoryRepository
 import logging
-import os
+import os,time
 import subprocess
 import librosa
 import numpy as np
@@ -47,7 +47,8 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins = ["*"], 
+    allow_origins = ["http://localhost:8081", "http://127.0.0.1:8081", 
+    "http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials = True,
     allow_methods = ["*"],
     allow_headers = ["*"],
@@ -55,7 +56,7 @@ app.add_middleware(
 #logger to aid debugging
 logging.basicConfig(level = logging.INFO)
 logger = logging.getLogger(__name__)
-model = whisper.load_model("base")
+model = whisper.load_model("tiny")
 
 # Register routes
 UPLOAD_DIR = "uploads"
@@ -136,6 +137,18 @@ async def upload_and_store(request: Request, audio: UploadFile = File(...)):
             session.commit()
         return {"ok": True, "final": True}
     return {"ok": True, "final": False}
+
+def wait_for_file(path: str, min_bytes: int = 1024, timeout: float = 0.4) -> bool:
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            if os.path.exists(path) and os.path.getsize(path) >= min_bytes:
+                return True
+        except OSError:
+            pass
+        time.sleep(0.02)
+    return False
+
 #send metrics from database to frontend
 @app.get("/api/v1/metrics/latest")
 async def get_metrics(db: Session = Depends(get_session)):
@@ -150,8 +163,17 @@ async def get_metrics(db: Session = Depends(get_session)):
 #send live wpm to frontend 
 @app.get("/api/v1/live-wpm")
 async def get_live_wpm(session_id: str, chunk_index: int):
-    chunk_mp3_path = os.path.join(UPLOAD_DIR, "sessions", session_id, f"chunk_{chunk_index:06d}.mp3")
+    chunk_mp3_path = os.path.join(
+        UPLOAD_DIR, "sessions", session_id, f"chunk_{chunk_index:06d}.mp3"
+    )
+
+    if not wait_for_file(chunk_mp3_path):
+        logger.info("live-wpm not ready: %s", chunk_mp3_path)
+        return {"wpm": None, "ready": False, "chunk_index": chunk_index}
+
     wpm_live = calc_wpm_live(chunk_mp3_path)
+    wpm_live["ready"] = True
+    wpm_live["chunk_index"] = chunk_index
     return wpm_live
 
 #convert webm (audiovisual) to mp3(audio)
@@ -165,18 +187,29 @@ def convert_to_mp3(input_path: str, output_path: str) -> None:
     
 def calc_wpm_live(path):
     text=transcription(path)
-    y, sr = librosa.load(path)
-    duration = librosa.get_duration(y=y,sr=sr)
     word_count = len(text.split())
-    wpm = word_count/(duration/60)
-    wpm=np.round(wpm,0)
+    wpm = word_count/(2/60)
+    wpm=np.round(wpm,2)
+    logger.info(f"wpm{wpm}")
     return {"wpm": wpm}
 
 #use whisper to get text transcription
 def transcription(path):
-    result = model.transcribe(path)
-    text = result["text"]  
-    return text
+    try:
+        if (not os.path.exists(path)) or os.path.getsize(path) == 0:
+            return ""
+    except OSError:
+        return ""
+
+    try:
+        result = model.transcribe(path, fp16=False)
+        return (result.get("text"))
+    except RuntimeError as e:
+        msg = str(e)
+        if "Failed to load audio" in msg:
+            logger.warning("Whisper couldn't decode %s (treating as empty). %s", path, msg)
+            return ""
+        raise
 
 #calculate numerical metrics
 def all_metrics(path):
