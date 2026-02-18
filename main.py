@@ -7,7 +7,9 @@ from datetime import datetime
 from pydub import AudioSegment
 from infrastructure.config import settings
 from infrastructure.container import container
-from infrastructure.api.routes import health, audio
+from infrastructure.api.routes import health, audio, auth
+from infrastructure.persistence.user_model import UserTable
+from infrastructure.persistence.user_repository import PostgresUserRepository
 from infrastructure.persistence.in_memory_repository import InMemoryRepository
 import logging
 import os,time
@@ -250,8 +252,10 @@ def _setup_dependencies():
     """Setup dependency injection container"""
     # Register repositories
     container.register("repository", InMemoryRepository())
+    container.register("user_repository", PostgresUserRepository(engine))
 
 _setup_dependencies()
 
 app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
 app.include_router(audio.router, prefix=settings.api_prefix, tags=["audio"])
+app.include_router(auth.router, prefix=settings.api_prefix, tags=["auth"])
